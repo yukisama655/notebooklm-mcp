@@ -135,12 +135,33 @@ export async function humanType(
   const charsPerMinute = wpm * 5;
   const avgDelayMs = (60 * 1000) / charsPerMinute;
 
+  // Dismiss any overlay/backdrop if showing
+  try {
+    const backdrop = await page.$(".cdk-overlay-backdrop-showing");
+    if (backdrop) {
+      await page.keyboard.press("Escape").catch(() => {});
+      await randomDelay(200, 400);
+    }
+  } catch {
+    // Ignore
+  }
+
   // Clear existing text first
-  await page.fill(selector, "");
+  try {
+    await page.fill(selector, "");
+  } catch {
+    await page.keyboard.press("Escape").catch(() => {});
+    await page.focus(selector).catch(() => {});
+  }
   await randomDelay(30, 80);
 
-  // Click to focus
-  await page.click(selector);
+  // Focus to type safely without getting stuck on backdrop pointer events
+  try {
+    await page.click(selector, { timeout: 2000 });
+  } catch {
+    await page.keyboard.press("Escape").catch(() => {});
+    await page.focus(selector).catch(() => {});
+  }
   await randomDelay(20, 60);
 
   // Type each character

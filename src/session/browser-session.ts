@@ -400,6 +400,21 @@ export class BrowserSession {
         );
       }
 
+      // Dismiss and disable pointer events on any overlay backdrops
+      try {
+        await page.keyboard.press("Escape").catch(() => {});
+        await page.keyboard.press("Escape").catch(() => {});
+        await page.evaluate(() => {
+          const backdrops = document.querySelectorAll(".cdk-overlay-backdrop, .cdk-overlay-backdrop-showing");
+          backdrops.forEach((el) => {
+            (el as HTMLElement).style.pointerEvents = "none";
+            (el as HTMLElement).style.display = "none";
+          });
+        }).catch(() => {});
+      } catch {
+        // Ignore
+      }
+
       log.info(`  ⌨️  Typing question with human-like behavior...`);
       await sendProgress?.("Typing question with human-like behavior...", 2, 5);
       await humanType(page, inputSelector, question, {
