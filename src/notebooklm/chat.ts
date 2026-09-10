@@ -210,6 +210,23 @@ export interface AskOptions {
  * the new turn isn't confused with prior turns in the same session.
  */
 export async function snapshotPriorAnswers(page: Page): Promise<string[]> {
+  try {
+    const texts = await page.evaluate(() => {
+      const msgs = document.querySelectorAll("chat-message");
+      const list: string[] = [];
+      msgs.forEach((m) => {
+        const toUser = m.querySelector(".to-user-container .message-text-content, .message-text-content");
+        if (toUser && (toUser as HTMLElement).innerText?.trim()) {
+          list.push((toUser as HTMLElement).innerText.trim());
+        }
+      });
+      return list;
+    });
+    if (texts.length > 0) return texts;
+  } catch {
+    // Fallback
+  }
+
   return page
     .locator(Selectors.chat.answerText)
     .allInnerTexts()
@@ -309,10 +326,28 @@ export async function waitForStableAnswer(
  */
 async function readLatestAnswer(page: Page): Promise<string | null> {
   try {
-    const raw = await page
-      .locator(Selectors.chat.latestAnswerText)
-      .last()
-      .innerText({ timeout: 2_000 });
+    const raw = await page.evaluate(() => {
+      const msgs = document.querySelectorAll("chat-message");
+      for (let i = msgs.length - 1; i >= 0; i--) {
+        const toUser = msgs[i].querySelector(".to-user-container .message-text-content, .message-text-content");
+        if (toUser && (toUser as HTMLElement).innerText?.trim()) {
+          return (toUser as HTMLElement).innerText;
+        }
+      }
+      return null;
+    });
+
+    if (!raw) {
+      const fallback = await page
+        .locator(Selectors.chat.latestAnswerText)
+        .last()
+        .innerText({ timeout: 2_000 })
+        .catch(() => null);
+      if (!fallback) return null;
+      const cleanedFallback = sanitizeAnswer(fallback);
+      return cleanedFallback.length > 0 ? cleanedFallback : null;
+    }
+
     const cleaned = sanitizeAnswer(raw);
     return cleaned.length > 0 ? cleaned : null;
   } catch {
