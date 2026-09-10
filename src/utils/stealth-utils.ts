@@ -115,103 +115,49 @@ export async function humanType(
   page: Page,
   selector: string,
   text: string,
-  options: {
+  _options: {
     wpm?: number;
     withTypos?: boolean;
   } = {}
 ): Promise<void> {
-  if (!CONFIG.stealthEnabled || !CONFIG.stealthHumanTyping) {
-    // Fast typing without stealth
-    await page.fill(selector, text);
-    return;
-  }
-
-  const wpm = options.wpm ?? randomInt(CONFIG.typingWpmMin, CONFIG.typingWpmMax);
-  const withTypos = options.withTypos ?? true;
-
-  // Calculate average delay per character (in ms)
-  // WPM = (characters / 5) / minutes
-  // Average word length ~5 characters
-  const charsPerMinute = wpm * 5;
-  const avgDelayMs = (60 * 1000) / charsPerMinute;
-
-  // Dismiss any overlay/backdrop if showing
+  // Remove any overlay backdrops from DOM
   try {
-    const backdrop = await page.$(".cdk-overlay-backdrop-showing");
-    if (backdrop) {
-      await page.keyboard.press("Escape").catch(() => {});
-      await randomDelay(200, 400);
-    }
+    await page.evaluate(() => {
+      document.querySelectorAll('.cdk-overlay-container, .cdk-overlay-backdrop, .cdk-overlay-backdrop-showing').forEach((el) => {
+        el.remove();
+      });
+    }).catch(() => {});
   } catch {
     // Ignore
   }
 
-  // Clear existing text first
+  // Direct evaluation to fill input instantly and reliably without pointer event / overlay blocking
   try {
-    await page.fill(selector, "");
-  } catch {
-    await page.keyboard.press("Escape").catch(() => {});
-    await page.focus(selector).catch(() => {});
-  }
-  await randomDelay(30, 80);
+    const success = await page.evaluate(
+      ({ sel, val }) => {
+        const el = document.querySelector(sel) as HTMLTextAreaElement;
+        if (el) {
+          el.focus();
+          el.value = val;
+          el.dispatchEvent(new Event("input", { bubbles: true }));
+          el.dispatchEvent(new Event("change", { bubbles: true }));
+          return true;
+        }
+        return false;
+      },
+      { sel: selector, val: text }
+    );
 
-  // Focus to type safely without getting stuck on backdrop pointer events
-  try {
-    await page.click(selector, { timeout: 2000 });
-  } catch {
-    await page.keyboard.press("Escape").catch(() => {});
-    await page.focus(selector).catch(() => {});
-  }
-  await randomDelay(20, 60);
-
-  // Type each character
-  let currentText = "";
-  let i = 0;
-
-  while (i < text.length) {
-    const char = text[i];
-
-    // Simulate very rare typo (0.3% chance) and shorter correction
-    if (withTypos && Math.random() < 0.003 && i > 0) {
-      // Type wrong character
-      const wrongChar = randomChar();
-      currentText += wrongChar;
-      await page.fill(selector, currentText);
-
-      // Shorter notice window for faster typing
-      const noticeDelay = randomFloat(avgDelayMs * 0.6, avgDelayMs * 1.1);
-      await sleep(noticeDelay);
-
-      // Backspace
-      currentText = currentText.slice(0, -1);
-      await page.fill(selector, currentText);
-      await randomDelay(20, 60);
+    if (success) {
+      await randomDelay(100, 200);
+      return;
     }
-
-    // Type correct character
-    currentText += char;
-    await page.fill(selector, currentText);
-
-    // Variable delay between characters – tuned for faster but still human-like typing
-    let delay: number;
-    if (char === "." || char === "!" || char === "?") {
-      delay = randomFloat(avgDelayMs * 1.05, avgDelayMs * 1.4);
-    } else if (char === " ") {
-      delay = randomFloat(avgDelayMs * 0.5, avgDelayMs * 0.9);
-    } else if (char === ",") {
-      delay = randomFloat(avgDelayMs * 0.9, avgDelayMs * 1.2);
-    } else {
-      // Normal character
-      const variation = randomFloat(0.5, 0.9);
-      delay = avgDelayMs * variation;
-    }
-
-    await sleep(delay);
-    i++;
+  } catch {
+    // Fallback if evaluate fails
   }
 
-  // Small delay after finishing typing
-  await randomDelay(50, 120);
+  // Fallback to force fill
+  await page.fill(selector, text, { force: true }).catch(() => {});
 }
 
 // ============================================================================
@@ -316,8 +262,12 @@ export async function realisticClick(
   // Small pause before clicking
   await randomDelay(100, 300);
 
-  // Click
-  await page.click(selector);
+  // Click with force fallback if overlay backdrop intercepts
+  try {
+    await page.click(selector, { timeout: 3000 });
+  } catch {
+    await page.click(selector, { force: true }).catch(() => {});
+  }
 
   // Small pause after clicking
   await randomDelay(150, 400);
