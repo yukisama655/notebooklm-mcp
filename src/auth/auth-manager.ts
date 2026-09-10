@@ -319,14 +319,31 @@ export class AuthManager {
             );
           }
 
-          // ✅ SIMPLE: Check if we're on NotebookLM (any path!)
-          if (currentUrl.startsWith("https://notebooklm.google.com/")) {
+          // ✅ Check all tabs in context for notebooklm.google (must not be accounts.google.com)
+          const allPages = page.context().pages();
+          const targetPage = allPages.find((p) => {
+            try {
+              const parsed = new URL(p.url());
+              return (
+                (parsed.hostname === "notebooklm.google.com" ||
+                  parsed.hostname === "notebooklm.google" ||
+                  parsed.hostname.endsWith(".notebooklm.google") ||
+                  parsed.hostname.endsWith(".notebooklm.google.com")) &&
+                !parsed.hostname.includes("accounts.google")
+              );
+            } catch {
+              return false;
+            }
+          });
+
+          if (targetPage) {
+            const currentUrl = targetPage.url();
             await sendProgress?.("Login successful! NotebookLM detected!", 9, 10);
             log.success("✅ Login successful! NotebookLM URL detected.");
             log.success(`✅ Current URL: ${currentUrl}`);
 
             // Short wait to ensure page is loaded
-            await page.waitForTimeout(2000);
+            await targetPage.waitForTimeout(2000);
             return true;
           }
 
@@ -343,15 +360,29 @@ export class AuthManager {
       }
 
       // Timeout reached - final check
-      const currentUrl = page.url();
-      if (currentUrl.startsWith("https://notebooklm.google.com/")) {
+      const allPages = page.context().pages();
+      const targetPage = allPages.find((p) => {
+        try {
+          const parsed = new URL(p.url());
+          return (
+            (parsed.hostname === "notebooklm.google.com" ||
+              parsed.hostname === "notebooklm.google" ||
+              parsed.hostname.endsWith(".notebooklm.google") ||
+              parsed.hostname.endsWith(".notebooklm.google.com")) &&
+            !parsed.hostname.includes("accounts.google")
+          );
+        } catch {
+          return false;
+        }
+      });
+      if (targetPage) {
         await sendProgress?.("Login successful (detected on timeout check)!", 9, 10);
         log.success("✅ Login successful (detected on timeout check)");
         return true;
       }
 
       log.error("❌ Login verification failed - timeout reached");
-      log.warning(`Current URL: ${currentUrl}`);
+      log.warning(`Current URL: ${page.url()}`);
       return false;
     } catch (error) {
       log.error(`❌ Login failed: ${error}`);
