@@ -319,16 +319,14 @@ export class AuthManager {
             );
           }
 
-          // ✅ Check all tabs in context for notebooklm.google (must not be accounts.google.com)
+          // ✅ Check all tabs in context for notebook.google or notebooklm.google (must not be accounts.google.com)
           const allPages = page.context().pages();
           const targetPage = allPages.find((p) => {
             try {
               const parsed = new URL(p.url());
               return (
-                (parsed.hostname === "notebooklm.google.com" ||
-                  parsed.hostname === "notebooklm.google" ||
-                  parsed.hostname.endsWith(".notebooklm.google") ||
-                  parsed.hostname.endsWith(".notebooklm.google.com")) &&
+                parsed.hostname.includes("notebook") &&
+                parsed.hostname.includes("google") &&
                 !parsed.hostname.includes("accounts.google")
               );
             } catch {
@@ -365,10 +363,8 @@ export class AuthManager {
         try {
           const parsed = new URL(p.url());
           return (
-            (parsed.hostname === "notebooklm.google.com" ||
-              parsed.hostname === "notebooklm.google" ||
-              parsed.hostname.endsWith(".notebooklm.google") ||
-              parsed.hostname.endsWith(".notebooklm.google.com")) &&
+            parsed.hostname.includes("notebook") &&
+            parsed.hostname.includes("google") &&
             !parsed.hostname.includes("accounts.google")
           );
         } catch {
@@ -549,8 +545,11 @@ export class AuthManager {
       try {
         const currentUrl = page.url();
 
-        // Simple check: Are we on NotebookLM?
-        if (currentUrl.startsWith("https://notebooklm.google.com/")) {
+        // Simple check: Are we on NotebookLM / Gemini Notebook?
+        if (
+          (currentUrl.includes("notebook.google") || currentUrl.includes("notebooklm.google")) &&
+          !currentUrl.includes("accounts.google")
+        ) {
           log.success("    ✅ NotebookLM URL detected!");
           // Short wait to ensure page is loaded
           await page.waitForTimeout(2000);
@@ -570,7 +569,7 @@ export class AuthManager {
   /**
    * Wait for NotebookLM to load (SIMPLE & RELIABLE)
    *
-   * Just checks if URL starts with notebooklm.google.com - no complex UI element searching!
+   * Just checks if URL starts with notebooklm.google.com or notebook.google.com - no complex UI element searching!
    * Matches the simplified approach used in performLogin().
    */
   private async waitForNotebook(page: Page, timeoutMs: number): Promise<boolean> {
@@ -581,7 +580,10 @@ export class AuthManager {
         const currentUrl = page.url();
 
         // Simple check: Are we on NotebookLM?
-        if (currentUrl.startsWith("https://notebooklm.google.com/")) {
+        if (
+          (currentUrl.includes("notebook.google") || currentUrl.includes("notebooklm.google")) &&
+          !currentUrl.includes("accounts.google")
+        ) {
           log.success("  ✅ NotebookLM URL detected");
           return true;
         }
